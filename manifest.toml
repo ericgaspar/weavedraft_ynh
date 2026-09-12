@@ -2,8 +2,8 @@
 
 packaging_format = 2
 
-id = "WeaveDraft"
-name = "weavedraft"
+id = "weavedraft"
+name = "WeaveDraft"
 description.en = "Design weaving patterns;threading, tie-up and pedalling"
 description.fr = "Créez des motifs de tissage ; enfilage, montage et pédalage"
 
@@ -46,7 +46,7 @@ ram.runtime = "50M"
     type = "select"
     choices = ["fr", "en"]
     default = "fr"
-    
+
 [resources]
 
     [resources.system_user]
