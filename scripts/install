@@ -18,7 +18,7 @@ mkdir -p "$install_dir"
 #=================================================
 ynh_script_progression "Adding $app's configuration files..."
 
-if [ $language -eq fr ]
+if [ $language != "fr" ]
 then
     ynh_config_add --template="indexfr.html" --destination="$install_dir/index.html"
 else
