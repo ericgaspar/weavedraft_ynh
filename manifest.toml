@@ -9,7 +9,7 @@ description.fr = "Expliquez en *quelques* (10~15) mots l'utilité de l'app ou ce
 
 version = "1.0~ynh1"
 
-maintainers = ["johndoe"]
+maintainers = ["eric_G"]
 
 [upstream]
 license = "MIT"
@@ -34,7 +34,7 @@ ram.runtime = "50M"
 
     [install.path]
     type = "path"
-    default = "weavedraft"
+    default = "/weavedraft"
 
     [install.init_main_permission]
     type = "group"
