@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WeaveDraft</title>
+<style>
+  body {
+    font-family: Verdana, Geneva, sans-serif;
+    font-size: 13px;
+    background: #ffffff;
+    color: #000;
+    margin: 12px;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px 0; }
+  .subtitle { color: #555; margin: 0 0 12px 0; }
+  .error {
+    color: #900;
+    font-weight: bold;
+    border: 1px solid #900;
+    background: #fee;
+    padding: 8px 10px;
+    margin-bottom: 14px;
+  }
+
+  #controls {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px 10px;
+    border: 1px solid #bbb;
+    background: #f2f2f2;
+    margin-bottom: 14px;
+  }
+  .controlRow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    align-items: center;
+  }
+  #controls label { white-space: nowrap; }
+  #controls input[type=number] { width: 55px; }
+
+  #draft {
+    display: grid;
+    grid-template-columns: max-content max-content max-content;
+    grid-template-rows: max-content max-content;
+    gap: 10px 14px;
+    align-items: start;
+  }
+  .panel .title { font-size: 13px; margin: 2px 0; }
+  canvas { display: block; }
+  canvas.editable { cursor: crosshair; }
+  #drawdownCanvas {
+    border: 1px solid #444;
+    box-shadow: 5px 5px 10px rgba(0, 0, 0, 0.35);
+    margin-bottom: 8px;   /* keep the shadow clear of the caption */
+  }
+
+  #currentColourBox {
+    width: 40px;
+    border: 1px solid #444;
+    cursor: pointer;
+  }
+  #palette {
+    /* fills downwards, wrapping into a new column after 10 swatches */
+    display: grid;
+    grid-auto-flow: column;
+    grid-template-rows: repeat(10, auto);
+    gap: 4px;
+    justify-content: start;
+  }
+  .swatch {
+    width: 40px;
+    height: 24px;
+    border: 1px solid #444;
+    cursor: pointer;
+    box-sizing: border-box;
+  }
+  .swatch.selected {
+    outline: 3px solid #000;
+    outline-offset: 1px;
+  }
+  details { margin-top: 14px; max-width: 70em; }
+  details summary { cursor: pointer; }
+  details h3 { font-size: 14px; margin: 14px 0 4px 0; }
+  details li { margin: 3px 0; }
+  #license { margin-left: 20px; }
+
+  #drawdownPanel { position: relative; }
+  #toast {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    max-width: 90%;
+    text-align: center;
+    background: #333;
+    color: #fff;
+    padding: 8px 16px;
+    border-radius: 4px;
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+  }
+  #toast.show { opacity: 0.95; }
+</style>
+</head>
+<body>
+
+<h1>WeaveDraft</h1>
+<p class="subtitle">Calculates the pattern which results for a given threading, tie-up and pedalling.</p>
+
+<div id="noscript-warning" class="error">JavaScript is required to use WeaveDraft.
+Please enable JavaScript (or disable script blockers) for this site.</div>
+
+<div id="controls">
+  <div class="controlRow">
+    <label>Warp threads (heddles):
+      <input type="number" id="warpCountInput" min="4" max="200">
+    </label>
+    <label>Shafts:
+      <input type="number" id="shaftsInput" min="2" max="16">
+    </label>
+    <label>Pedals:
+      <input type="number" id="pedalsInput" min="2" max="16">
+    </label>
+    <label>Weft rows:
+      <input type="number" id="weftCountInput" min="4" max="200">
+    </label>
+    <label>Colour swatches:
+      <input type="number" id="paletteSizeInput" min="2" max="40">
+    </label>
+    <label><input type="checkbox" id="reverseCheck"> Show reverse side</label>
+    <label><input type="checkbox" id="multiPedalCheck"> Press multiple pedals</label>
+  </div>
+  <div class="controlRow">
+    <button id="dupThreadingButton" title="Repeat the threading you have entered across to the right">Duplicate threading right</button>
+    <button id="dupPedallingButton" title="Repeat the pedalling you have entered up the screen">Duplicate pedalling up</button>
+    <button id="clearThreadingButton">Clear threading</button>
+    <button id="clearTieupButton">Clear tie-up</button>
+    <button id="clearPedallingButton">Clear pedalling</button>
+    <button id="clearAllButton">Clear all</button>
+    <button id="newButton">New</button>
+    <button id="saveButton">Save&hellip;</button>
+    <button id="loadButton">Load&hellip;</button>
+    <input type="file" id="loadFile" accept=".json,application/json" style="display:none">
+    <input type="color" id="colourInput" style="display:none">
+  </div>
+</div>
+
+<div id="draft">
+  <div class="panel">
+    <div class="title">Threading</div>
+    <canvas id="threadingCanvas" class="editable"></canvas>
+  </div>
+  <div class="panel">
+    <div class="title">Tie-up</div>
+    <canvas id="tieupCanvas" class="editable"></canvas>
+  </div>
+  <div class="panel">
+    <div class="title">Current colour</div>
+    <div id="currentColourBox" title="Click to change this colour"></div>
+  </div>
+  <div class="panel" id="drawdownPanel">
+    <canvas id="drawdownCanvas"></canvas>
+    <div class="title">Resulting pattern</div>
+    <div id="toast"></div>
+  </div>
+  <div class="panel">
+    <canvas id="pedallingCanvas" class="editable"></canvas>
+    <div class="title">Pedalling</div>
+  </div>
+  <div class="panel">
+    <div id="palette"></div>
+    <div class="title">Colours</div>
+  </div>
+</div>
+
+<details id="instructions">
+  <summary><b>Instructions</b> (Click to show)</summary>
+
+  <h3>Configuration</h3>
+  <ul>
+    <li>Set the number of threads (heddles) in your loom</li>
+    <li>Set the number of shafts</li>
+    <li>Set the number of pedals</li>
+    <li>Set the number of weft rows (if the pattern repeats, it could be the number
+        of rows before a repeat, or two or three times that, to see what the pattern
+        will look like).</li>
+  </ul>
+
+  <h3>Colours</h3>
+  <ul>
+    <li>Choose the number of different colour threads you will use (ie. number of
+        colour swatches)</li>
+    <li>For each swatch double-click to set the thread colour. Click the Custom
+        button to select any colour, and use the colour picker (eye dropper) to
+        choose colours from photos, web pages, etc.</li>
+    <li>For each operation, single-click a swatch to set the current colour
+        (eg. warp colour)</li>
+  </ul>
+
+  <h3>Threading</h3>
+  <ul>
+    <li>Pick a colour (click on the swatch) and then click or drag to place it on a
+        particular heddle. You can drag to set multiple heddles to the same colour.</li>
+    <li>Ctrl+click removes a threading box.</li>
+  </ul>
+
+  <h3>Tie-up</h3>
+  <ul>
+    <li>Click on a box in the tie-up area to indicate that this shaft will be raised
+        if the corresponding pedal is pushed. You can drag across to set multiple
+        boxes.</li>
+  </ul>
+
+  <h3>Pedalling</h3>
+  <ul>
+    <li>Start at the bottom (the weave moves upwards, away from you, as you weave)</li>
+    <li>Pick a colour (click on the swatch)</li>
+    <li>Click on a pedal box to indicate that you will press this pedal for this row</li>
+    <li>You can check "Press multiple pedals" which lets you press more than one
+        pedal (eg. one with each foot). In this case clicking on a pedal box toggles
+        it on and off. If multiple pedals are pressed then all shafts connected to
+        all pressed pedals will be raised.</li>
+    <li>Ctrl+click removes a pedal box; only the top row can be emptied of its
+        last box.</li>
+  </ul>
+
+  <h3>Duplicating threading or pedalling</h3>
+  <ul>
+    <li>Click "Duplicate threading right" if your pattern (entered at the left)
+        repeats - it will copy the existing pattern over to fill the entire
+        threading area.</li>
+    <li>Click "Duplicate pedalling up" if your pattern repeats vertically - it will
+        copy the existing pattern up to fill the entire weft area.</li>
+  </ul>
+
+  <h3>Loading and saving</h3>
+  <ul>
+    <li>The pattern updates as you go, and your work is saved in this browser
+        automatically.</li>
+    <li>To save a pattern for later click "Save". Then you can make a new pattern
+        or send the saved file to a friend.</li>
+    <li>Click "Load" to load an existing pattern back in.</li>
+    <li>Click "New" to start with a new default pattern.</li>
+    <li>To print a pattern take a screenshot and print that.</li>
+  </ul>
+</details>
+
+<details id="about">
+  <summary><b>About</b> (Click to show)</summary>
+
+  <p>Designed by Nick Gammon, and coded by Claude AI.</p>
+  <p>Written on 16 July 2026.</p>
+
+  <details id="license">
+    <summary><b>License (MIT)</b> (Click to show)</summary>
+
+    <p>Copyright &copy; 2026 Nick Gammon</p>
+
+    <h3>PERMISSION TO DISTRIBUTE</h3>
+
+    <p>Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal in
+    the Software without restriction, including without limitation the rights to
+    use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+    the Software, and to permit persons to whom the Software is furnished to do so,
+    subject to the following conditions:</p>
+
+    <p>The above copyright notice and this permission notice shall be included in
+    all copies or substantial portions of the Software.</p>
+
+    <h3>LIMITATION OF LIABILITY</h3>
+
+    <p>The software is provided "as is", without warranty of any kind, express or
+    implied, including but not limited to the warranties of merchantability, fitness
+    for a particular purpose and noninfringement. In no event shall the authors or
+    copyright holders be liable for any claim, damages or other liability, whether
+    in an action of contract, tort or otherwise, arising from, out of or in
+    connection with the software or the use or other dealings in the software.</p>
+  </details>
+
+  <p>You are welcome to save this HTML file to your own PC and use it offline, in
+  case the web site at which you found it ever goes down.</p>
+</details>
+
+<script>
+"use strict";
+
+// scripts are running, so take down the no-JavaScript warning
+var noscriptWarning = document.getElementById("noscript-warning");
+if (noscriptWarning)
+  noscriptWarning.hidden = true;
+
+var CELL = 14;              // pixel size of one grid cell
+var STORAGE_KEY = "weavedraft";
+var SHAFT_LIMITS   = { min: 2, max: 16 };
+var PEDAL_LIMITS   = { min: 2, max: 16 };
+var WARP_LIMITS    = { min: 4, max: 200 };
+var WEFT_LIMITS    = { min: 4, max: 200 };
+var PALETTE_LIMITS = { min: 2, max: 40 };
+var UNSET = -1;
+var EMPTY_CELL = "#d8d8d8";   // unset grid cell grey
+
+var state;   // the whole draft — this object is what gets saved/loaded
+
+function defaultState () {
+  var s = {
+    version: 2,
+    shafts: 4,
+    pedals: 6,
+    warpCount: 40,
+    weftCount: 24,
+    threading: [],        // per warp thread: shaft index (0-based) or UNSET
+    warpColour: [],       // per warp thread: hex colour
+    pedalling: [],        // per weft row (row 0 at the bottom): array of
+                          // pressed pedal indexes; empty = not yet entered
+    weftColour: [],       // per weft row: hex colour
+    tieup: [],            // tieup[shaft][pedal] = true if pedal lifts shaft
+    palette: ["#00cc00", "#005500", "#990000", "#ee0000", "#ffff00",
+              "#ffffcc", "#884400", "#ff9900", "#0000aa", "#ff00ff"],
+    sparePalette: [],     // colours put aside when the palette is shrunk
+    currentColour: 8,     // index into palette (blue)
+    multiPedal: false,    // allow more than one pedal per weft row
+    reverse: false
+  };
+
+  // starter draft: straight draw, straight pedalling, 2/2 twill tie-up
+  // with plain weave on the spare pedals, orange warp on blue weft —
+  // so something recognisable appears at once
+  var i;
+  for (i = 0; i < s.warpCount; i++) {
+    s.threading.push(i % s.shafts);
+    s.warpColour.push("#ff9900");
+  }
+  for (i = 0; i < s.weftCount; i++) {
+    s.pedalling.push([i % Math.min(s.shafts, s.pedals)]);
+    s.weftColour.push("#0000aa");
+  }
+  for (var shaft = 0; shaft < s.shafts; shaft++) {
+    var row = [];
+    for (var pedal = 0; pedal < s.pedals; pedal++)
+      row.push(pedal < s.shafts
+                 ? shaft === pedal || shaft === (pedal + 1) % s.shafts
+                 : shaft % 2 === (pedal - s.shafts) % 2);
+    s.tieup.push(row);
+  }
+  return s;
+} // end of defaultState
+
+// ---------------------------------------------------------- canvas helpers
+
+var threadingCanvas = document.getElementById("threadingCanvas");
+var tieupCanvas     = document.getElementById("tieupCanvas");
+var pedallingCanvas = document.getElementById("pedallingCanvas");
+var drawdownCanvas  = document.getElementById("drawdownCanvas");
+
+// drawing is done in whole device pixels, with every cell edge snapped by
+// edge() — at fractional display scaling (e.g. 125%) cell edges would
+// otherwise fall on half-pixels and anti-aliasing draws faint seams
+// across every second row and column
+function sizeCanvas (canvas, cols, rows) {
+  var dpr = window.devicePixelRatio || 1;
+  canvas.width  = Math.round(cols * CELL * dpr);
+  canvas.height = Math.round(rows * CELL * dpr);
+  canvas.style.width  = (cols * CELL) + "px";
+  canvas.style.height = (rows * CELL) + "px";
+  var ctx = canvas.getContext("2d");
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  return ctx;
+} // end of sizeCanvas
+
+// device-pixel position of grid line i
+function edge (i) {
+  return Math.round(i * CELL * (window.devicePixelRatio || 1));
+} // end of edge
+
+// draw one grid cell with a small white gap on the right/bottom
+function cell (ctx, col, row, colour) {
+  var gap = Math.max(1, Math.round(window.devicePixelRatio || 1));
+  ctx.fillStyle = colour;
+  ctx.fillRect(edge(col), edge(row),
+               edge(col + 1) - edge(col) - gap,
+               edge(row + 1) - edge(row) - gap);
+} // end of cell
+
+// draw one solid cell, no gaps — it's cloth
+function solidCell (ctx, col, row, colour) {
+  ctx.fillStyle = colour;
+  ctx.fillRect(edge(col), edge(row),
+               edge(col + 1) - edge(col),
+               edge(row + 1) - edge(row));
+} // end of solidCell
+
+// which cell was the mouse event in?
+function eventCell (canvas, ev) {
+  var rect = canvas.getBoundingClientRect();
+  return {
+    col: Math.floor((ev.clientX - rect.left) / CELL),
+    row: Math.floor((ev.clientY - rect.top)  / CELL)
+  };
+} // end of eventCell
+
+// ---------------------------------------------------------------- drawing
+
+function drawThreading () {
+  var ctx = sizeCanvas(threadingCanvas, state.warpCount, state.shafts);
+  for (var t = 0; t < state.warpCount; t++)
+    for (var s = 0; s < state.shafts; s++) {
+      // shaft 0 is drawn at the bottom, nearest the cloth
+      var row = state.shafts - 1 - s;
+      cell(ctx, t, row, state.threading[t] === s ? state.warpColour[t] : EMPTY_CELL);
+    }
+} // end of drawThreading
+
+function drawTieup () {
+  var ctx = sizeCanvas(tieupCanvas, state.pedals, state.shafts);
+  for (var p = 0; p < state.pedals; p++)
+    for (var s = 0; s < state.shafts; s++) {
+      var row = state.shafts - 1 - s;
+      cell(ctx, p, row, state.tieup[s][p] ? "#000000" : EMPTY_CELL);
+    }
+} // end of drawTieup
+
+function drawPedalling () {
+  var ctx = sizeCanvas(pedallingCanvas, state.pedals, state.weftCount);
+  for (var r = 0; r < state.weftCount; r++) {
+    var row = state.weftCount - 1 - r;   // weft row 0 at the bottom
+    for (var p = 0; p < state.pedals; p++)
+      cell(ctx, p, row,
+           state.pedalling[r].indexOf(p) >= 0 ? state.weftColour[r] : EMPTY_CELL);
+  }
+} // end of drawPedalling
+
+function drawDrawdown () {
+  var ctx = sizeCanvas(drawdownCanvas, state.warpCount, state.weftCount);
+  for (var r = 0; r < state.weftCount; r++) {
+    var row = state.weftCount - 1 - r;
+    var pressed = state.pedalling[r];
+    for (var t = 0; t < state.warpCount; t++) {
+      var s = state.threading[t];
+      var colour;
+      if (s === UNSET || pressed.length === 0)
+        colour = EMPTY_CELL;
+      else {
+        // the shaft is lifted if any of the pressed pedals is tied to it
+        var lifted = pressed.some(function (p) { return state.tieup[s][p]; });
+        if (state.reverse)
+          lifted = !lifted;
+        // a lifted shaft raises its warp thread over the weft
+        colour = lifted ? state.warpColour[t] : state.weftColour[r];
+      }
+      solidCell(ctx, t, row, colour);
+    }
+  }
+} // end of drawDrawdown
+
+var paletteDiv = document.getElementById("palette");
+
+// the swatch elements are created once per palette size and kept — recreating
+// them on every redraw would break double-click (the second click would land
+// on a new element)
+function initPalette () {
+  paletteDiv.innerHTML = "";
+  for (var i = 0; i < state.palette.length; i++)
+    (function (i) {
+      var swatch = document.createElement("div");
+      swatch.className = "swatch";
+      swatch.title = "Click to select, double-click to change";
+      swatch.addEventListener("click", function () {
+        state.currentColour = i;
+        redraw();
+      });
+      swatch.addEventListener("dblclick", function () {
+        state.currentColour = i;
+        redraw();
+        editCurrentColour();
+      });
+      paletteDiv.appendChild(swatch);
+    })(i);
+} // end of initPalette
+
+function drawPalette () {
+  if (paletteDiv.children.length !== state.palette.length)
+    initPalette();
+  var swatches = paletteDiv.children;
+  for (var i = 0; i < swatches.length; i++) {
+    swatches[i].style.background = state.palette[i];
+    swatches[i].classList.toggle("selected", i === state.currentColour);
+  }
+
+  var box = document.getElementById("currentColourBox");
+  box.style.background = state.palette[state.currentColour];
+  // match the tie-up grid height, like the original
+  box.style.height = (state.shafts * CELL) + "px";
+} // end of drawPalette
+
+function redraw () {
+  drawThreading();
+  drawTieup();
+  drawPedalling();
+  drawDrawdown();
+  drawPalette();
+  document.getElementById("warpCountInput").value = state.warpCount;
+  document.getElementById("shaftsInput").value = state.shafts;
+  document.getElementById("pedalsInput").value = state.pedals;
+  document.getElementById("multiPedalCheck").checked = state.multiPedal;
+  document.getElementById("weftCountInput").value = state.weftCount;
+  document.getElementById("paletteSizeInput").value = state.palette.length;
+  document.getElementById("reverseCheck").checked = state.reverse;
+  saveLocal();
+} // end of redraw
+
+// ------------------------------------------------------------- editing
+
+function currentColour () {
+  return state.palette[state.currentColour];
+} // end of currentColour
+
+var toastTimer = null;
+
+function toast (message) {
+  var el = document.getElementById("toast");
+  el.textContent = message;
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { el.classList.remove("show"); }, 2500);
+} // end of toast
+
+function applyThreading (col, row, starting, remove) {
+  if (col < 0 || col >= state.warpCount || row < 0 || row >= state.shafts)
+    return;
+  if (remove) {
+    if (state.threading[col] !== UNSET) {
+      state.threading[col] = UNSET;
+      redraw();
+    }
+    return;
+  }
+  var shaft = state.shafts - 1 - row;
+  state.threading[col] = shaft;
+  state.warpColour[col] = currentColour();
+  redraw();
+} // end of applyThreading
+
+function applyPedalling (col, row, starting, remove) {
+  if (col < 0 || col >= state.pedals || row < 0 || row >= state.weftCount)
+    return;
+  // toggling and removing repeat as the pointer moves, so for those
+  // respond to clicks only, not drags
+  if (!starting && (remove || state.multiPedal))
+    return;
+  var weftRow = state.weftCount - 1 - row;
+  // pedalling is entered from the bottom up, the way the cloth is woven:
+  // you may change a row already entered, or add the next empty row,
+  // but not leave a gap below
+  for (var i = 0; i < weftRow; i++)
+    if (state.pedalling[i].length === 0) {
+      if (starting)   // don't nag on every drag movement
+        toast("Pedalling is entered from the bottom up — fill the rows below first.");
+      return;
+    }
+  var pressed = state.pedalling[weftRow];
+  var topEntered = repeatLength(state.pedalling) - 1;   // topmost entered row
+
+  // release one pressed pedal; emptying a row is only allowed for the
+  // top entered row — otherwise the rows above would be left floating
+  function release (pedal) {
+    if (pressed.length <= 1 && weftRow !== topEntered) {
+      toast("Only the top pedalling row can be emptied.");
+      return;
+    }
+    var at = pressed.indexOf(pedal);
+    if (at >= 0)
+      pressed.splice(at, 1);
+    redraw();
+  }
+
+  if (remove) {                        // Ctrl+click
+    if (pressed.length === 0)
+      return;                          // nothing to remove
+    if (pressed.indexOf(col) >= 0)
+      release(col);
+    else if (pressed.length === 1)
+      release(pressed[0]);             // only one box — any cell in the row will do
+    return;
+  }
+
+  if (state.multiPedal) {
+    if (pressed.indexOf(col) >= 0) {
+      release(col);
+      return;
+    }
+    if (pressed.length + 1 >= state.pedals) {
+      toast("A row cannot press every pedal.");
+      return;
+    }
+    pressed.push(col);
+    // all the pedals of a row weave one weft thread — one colour
+    state.weftColour[weftRow] = currentColour();
+  } else {
+    state.pedalling[weftRow] = [col];
+    state.weftColour[weftRow] = currentColour();
+  }
+  redraw();
+} // end of applyPedalling
+
+var tieupPaintValue = null;   // while dragging, paint this value
+
+function applyTieup (col, row, starting) {
+  if (col < 0 || col >= state.pedals || row < 0 || row >= state.shafts)
+    return;
+  var shaft = state.shafts - 1 - row;
+  if (starting)   // first cell of a click/drag: toggle it, then paint that value
+    tieupPaintValue = !state.tieup[shaft][col];
+  if (state.tieup[shaft][col] !== tieupPaintValue) {
+    state.tieup[shaft][col] = tieupPaintValue;
+    redraw();
+  }
+} // end of applyTieup
+
+// click-drag painting on a canvas; Ctrl (or Cmd) means remove
+function makePaintable (canvas, apply) {
+  canvas.addEventListener("pointerdown", function (ev) {
+    ev.preventDefault();
+    canvas.setPointerCapture(ev.pointerId);
+    var c = eventCell(canvas, ev);
+    apply(c.col, c.row, true, ev.ctrlKey || ev.metaKey);
+  });
+  canvas.addEventListener("pointermove", function (ev) {
+    if (ev.buttons !== 1)
+      return;
+    var c = eventCell(canvas, ev);
+    apply(c.col, c.row, false, ev.ctrlKey || ev.metaKey);
+  });
+} // end of makePaintable
+
+makePaintable(threadingCanvas, applyThreading);
+makePaintable(pedallingCanvas, applyPedalling);
+makePaintable(tieupCanvas, applyTieup);
+
+// ------------------------------------------------------ colour editing
+
+var colourInput = document.getElementById("colourInput");
+
+function editCurrentColour () {
+  colourInput.value = state.palette[state.currentColour];
+  colourInput.click();
+} // end of editCurrentColour
+
+colourInput.addEventListener("input", function () {
+  state.palette[state.currentColour] = colourInput.value;
+  redraw();
+});
+
+document.getElementById("currentColourBox")
+        .addEventListener("click", editCurrentColour);
+
+// ------------------------------------------------------------ resizing
+
+// resize an array, padding with a value — pass a function to make
+// a fresh pad value for each new entry (e.g. an empty array)
+function resizeArray (arr, newLength, padValue) {
+  arr.length = Math.min(arr.length, newLength);
+  while (arr.length < newLength)
+    arr.push(typeof padValue === "function" ? padValue() : padValue);
+} // end of resizeArray
+
+function setWarpCount (n) {
+  resizeArray(state.threading, n, UNSET);
+  resizeArray(state.warpColour, n, currentColour());
+  state.warpCount = n;
+  redraw();
+} // end of setWarpCount
+
+function setWeftCount (n) {
+  resizeArray(state.pedalling, n, function () { return []; });
+  resizeArray(state.weftColour, n, currentColour());
+  state.weftCount = n;
+  redraw();
+} // end of setWeftCount
+
+function setShafts (n) {
+  // drop threading marks that point past the new size
+  for (var i = 0; i < state.warpCount; i++)
+    if (state.threading[i] >= n)
+      state.threading[i] = UNSET;
+  // add or remove tie-up rows, new cells empty
+  resizeArray(state.tieup, n, null);
+  for (var s = 0; s < n; s++) {
+    if (!state.tieup[s])
+      state.tieup[s] = [];
+    resizeArray(state.tieup[s], state.pedals, false);
+  }
+  state.shafts = n;
+  redraw();
+} // end of setShafts
+
+function setPedals (n) {
+  // drop pressed pedals that point past the new size
+  for (var i = 0; i < state.weftCount; i++)
+    state.pedalling[i] = state.pedalling[i].filter(function (p) { return p < n; });
+  // add or remove tie-up columns, new cells empty
+  for (var s = 0; s < state.shafts; s++)
+    resizeArray(state.tieup[s], n, false);
+  state.pedals = n;
+  redraw();
+} // end of setPedals
+
+function hslToHex (h, s, l) {
+  s /= 100;
+  l /= 100;
+  var a = s * Math.min(l, 1 - l);
+  function channel (n) {
+    var k = (n + h / 30) % 12;
+    var c = l - a * Math.max(-1, Math.min(k - 3, Math.min(9 - k, 1)));
+    return Math.round(c * 255).toString(16).padStart(2, "0");
+  }
+  return "#" + channel(0) + channel(8) + channel(4);
+} // end of hslToHex
+
+// pre-fill colour for swatch i: a rainbow of ten hues per column,
+// each further column a darker or lighter rainbow
+function rainbowColour (i) {
+  var hue = (i % 10) * 36;
+  var lightness = [50, 35, 65, 25, 75][Math.floor(i / 10) % 5];
+  return hslToHex(hue, 100, lightness);
+} // end of rainbowColour
+
+function setPaletteSize (n) {
+  if (n < state.palette.length) {
+    // put the removed colours aside so growing again brings them back —
+    // never throw away a colour the user may have chosen
+    state.sparePalette = state.palette.slice(n).concat(state.sparePalette);
+    state.palette.length = n;
+  }
+  while (state.palette.length < n)
+    state.palette.push(state.sparePalette.length > 0
+                         ? state.sparePalette.shift()
+                         : rainbowColour(state.palette.length));
+  state.currentColour = Math.min(state.currentColour, n - 1);
+  redraw();
+} // end of setPaletteSize
+
+function numberInput (id, limits, apply) {
+  document.getElementById(id).addEventListener("change", function () {
+    var n = Math.round(Number(this.value));
+    if (isNaN(n))
+      n = limits.min;
+    n = Math.max(limits.min, Math.min(limits.max, n));
+    apply(n);
+  });
+} // end of numberInput
+
+numberInput("warpCountInput", WARP_LIMITS, setWarpCount);
+numberInput("weftCountInput", WEFT_LIMITS, setWeftCount);
+numberInput("shaftsInput", SHAFT_LIMITS, setShafts);
+numberInput("pedalsInput", PEDAL_LIMITS, setPedals);
+numberInput("paletteSizeInput", PALETTE_LIMITS, setPaletteSize);
+
+document.getElementById("reverseCheck").addEventListener("change", function () {
+  state.reverse = this.checked;
+  redraw();
+});
+
+document.getElementById("multiPedalCheck").addEventListener("change", function () {
+  state.multiPedal = this.checked;
+  redraw();
+});
+
+// ------------------------------------------------------- save and load
+
+function saveLocal () {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (e) { /* private browsing, storage full — just skip auto-save */ }
+} // end of saveLocal
+
+// the draft as it was last saved, loaded or created — anything the user
+// has done since then would be lost by New
+var cleanSnapshot = "";
+
+function markClean () {
+  cleanSnapshot = JSON.stringify(state);
+} // end of markClean
+
+function isDirty () {
+  return JSON.stringify(state) !== cleanSnapshot;
+} // end of isDirty
+
+// check a loaded object is a plausible draft before adopting it
+function validState (s) {
+  return s && typeof s === "object" &&
+    typeof s.shafts === "number" &&
+    Array.isArray(s.threading) && Array.isArray(s.warpColour) &&
+    Array.isArray(s.pedalling) && Array.isArray(s.weftColour) &&
+    Array.isArray(s.tieup) && Array.isArray(s.palette) &&
+    s.threading.length === s.warpCount &&
+    s.pedalling.length === s.weftCount &&
+    s.tieup.length === s.shafts;
+} // end of validState
+
+// fill in anything missing from drafts saved by older versions
+function normaliseState (s) {
+  if (!Array.isArray(s.sparePalette))
+    s.sparePalette = [];
+  if (typeof s.pedals !== "number")
+    s.pedals = s.shafts;   // version 1 had one pedal per shaft
+  if (typeof s.multiPedal !== "boolean")
+    s.multiPedal = false;
+  // version 1 stored one pedal number per row, not an array of pedals
+  s.pedalling = s.pedalling.map(function (p) {
+    if (Array.isArray(p))
+      return p;
+    return p === UNSET || typeof p !== "number" ? [] : [p];
+  });
+  s.currentColour = Math.max(0, Math.min(s.currentColour || 0,
+                                         s.palette.length - 1));
+  return s;
+} // end of normaliseState
+
+document.getElementById("newButton").addEventListener("click", function () {
+  if (isDirty() &&
+      !confirm("The pattern has unsaved changes which will be lost. Start a new pattern anyway?"))
+    return;
+  state = defaultState();
+  redraw();
+  markClean();
+});
+
+document.getElementById("saveButton").addEventListener("click", function () {
+  var blob = new Blob([JSON.stringify(state, null, 2)],
+                      { type: "application/json" });
+  var link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "weavedraft.json";
+  link.click();
+  URL.revokeObjectURL(link.href);
+  markClean();
+});
+
+document.getElementById("loadButton").addEventListener("click", function () {
+  if (isDirty() &&
+      !confirm("The pattern has unsaved changes which will be lost. Load another pattern anyway?"))
+    return;
+  document.getElementById("loadFile").click();
+});
+
+document.getElementById("loadFile").addEventListener("change", function () {
+  var file = this.files[0];
+  this.value = "";
+  if (!file)
+    return;
+  file.text().then(function (text) {
+    var s;
+    try {
+      s = JSON.parse(text);
+    } catch (e) {
+      alert("That file is not a WeaveDraft file.");
+      return;
+    }
+    if (!validState(s)) {
+      alert("That file is not a WeaveDraft file.");
+      return;
+    }
+    state = normaliseState(s);
+    redraw();
+    markClean();
+  });
+});
+
+// ------------------------------------------------- duplicate and clear
+
+// a threading mark is UNSET when empty; a pedalling mark is an empty array
+function isSet (mark) {
+  return Array.isArray(mark) ? mark.length > 0 : mark !== UNSET;
+} // end of isSet
+
+// index just past the last set entry, or 0 if none are set
+function repeatLength (marks) {
+  for (var i = marks.length - 1; i >= 0; i--)
+    if (isSet(marks[i]))
+      return i + 1;
+  return 0;
+} // end of repeatLength
+
+// repeat the block [0 .. len) of marks and colours over the rest of the arrays
+function duplicateRepeat (marks, colours) {
+  var len = repeatLength(marks);
+  if (len === 0 || len >= marks.length)
+    return;   // nothing entered, or nothing left to fill
+  for (var i = len; i < marks.length; i++) {
+    var mark = marks[i % len];
+    // copy pedalling arrays — a shared one would edit every repeat at once
+    marks[i] = Array.isArray(mark) ? mark.slice() : mark;
+    colours[i] = colours[i % len];
+  }
+  redraw();
+} // end of duplicateRepeat
+
+document.getElementById("dupThreadingButton").addEventListener("click", function () {
+  duplicateRepeat(state.threading, state.warpColour);
+});
+
+// pedalling starts at the bottom of the screen and index 0 is the bottom
+// row, so repeating onwards through the array fills upwards
+document.getElementById("dupPedallingButton").addEventListener("click", function () {
+  duplicateRepeat(state.pedalling, state.weftColour);
+});
+
+function clearThreading () {
+  for (var i = 0; i < state.warpCount; i++)
+    state.threading[i] = UNSET;
+} // end of clearThreading
+
+function clearTieup () {
+  for (var s = 0; s < state.shafts; s++)
+    for (var p = 0; p < state.pedals; p++)
+      state.tieup[s][p] = false;
+} // end of clearTieup
+
+function clearPedalling () {
+  for (var i = 0; i < state.weftCount; i++)
+    state.pedalling[i] = [];
+} // end of clearPedalling
+
+document.getElementById("clearThreadingButton").addEventListener("click", function () {
+  if (!confirm("Clear the threading?"))
+    return;
+  clearThreading();
+  redraw();
+});
+
+document.getElementById("clearTieupButton").addEventListener("click", function () {
+  if (!confirm("Clear the tie-up?"))
+    return;
+  clearTieup();
+  redraw();
+});
+
+document.getElementById("clearPedallingButton").addEventListener("click", function () {
+  if (!confirm("Clear the pedalling?"))
+    return;
+  clearPedalling();
+  redraw();
+});
+
+document.getElementById("clearAllButton").addEventListener("click", function () {
+  if (isDirty() &&
+      !confirm("The pattern has unsaved changes which will be lost. Clear everything anyway?"))
+    return;
+  clearThreading();
+  clearTieup();
+  clearPedalling();
+  redraw();
+});
+
+// -------------------------------------------------------------- start up
+
+(function () {
+  try {
+    var saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (validState(saved))
+      state = normaliseState(saved);
+  } catch (e) { /* fall through to a fresh draft */ }
+  if (!state)
+    state = defaultState();
+  redraw();
+  markClean();
+})();
+
+</script>
+</body>
+</html>
