@@ -13,11 +13,7 @@ maintainers = ["johndoe"]
 
 [upstream]
 license = "MIT"
-website = "https://example.com"
-demo = "https://demo.example.com"
-admindoc = "https://doc.yunohost.org/dev/packaging/"
-userdoc = "https://yunohost.org/apps"
-code = "https://some.forge.com/example/example"
+demo = "https://www.gammon.com.au/weavedraft/"
 
 [integration]
 yunohost = ">= 12.1.40"
