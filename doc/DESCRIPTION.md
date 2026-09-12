@@ -1,8 +1,10 @@
 Design weaving patterns — threading, tie-up and pedalling — right in your browser. A modern re-implementation of the 1990s Mac/Windows program.
 
+License (MIT)
+
 Copyright &copy; 2026 Nick Gammon
 
-<h3>PERMISSION TO DISTRIBUTE</h3>
+<PERMISSION TO DISTRIBUTE
 
     <p>Permission is hereby granted, free of charge, to any person obtaining a copy
     of this software and associated documentation files (the "Software"), to deal in
